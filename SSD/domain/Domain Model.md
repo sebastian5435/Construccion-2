@@ -1,4 +1,4 @@
-# Domain Model - NexusMarket
+# Domain Model
 
 ## Introduction
 
@@ -30,7 +30,13 @@ Product (Abstract)
 
 Warehouse
 
+Inventory
+
+ShoppingCart
+
 Order
+
+Invoice
 
 Shipment
 
@@ -62,13 +68,28 @@ Administrator
 Supervisor
  └── consults ──────────────────> Marketplace Information
 
+Warehouse
+ └── stores ────────────────────> Inventory
+
+Inventory
+ ├── associated with ───────────> Product
+ └── stored in ─────────────────> Warehouse
+
+ShoppingCart
+ ├── belongs to ────────────────> Buyer
+ └── contains ──────────────────> Product
+
 Order
  ├── associated with ───────────> Buyer
  ├── contains ──────────────────> Product
+ ├── generates ─────────────────> Invoice
  ├── generates ─────────────────> Shipment
  └── may generate ──────────────> Return
- │
- └── may generate ──> Refund
+                                    │
+                                    └── may generate ──> Refund
+
+Invoice
+ └── associated with ───────────> Order
 ```
 
 ---
@@ -203,6 +224,40 @@ Represents a physical storage location used for stock control.
 
 ---
 
+### Inventory
+
+#### Description
+Transactional entity that links products to their physical location and controls real-time stock availability. The system must not allow negative inventory under any circumstance.
+
+#### Attributes
+
+| Attribute | Type | Description |
+| :--- | :--- | :--- |
+| product | Product | Commercialized good being quantified. |
+| warehouse | Warehouse | Location where the merchandise resides. |
+| quantity | int | Available units. **Constraint:** Cannot be less than 0. |
+
+#### Business Rules
+- Inventory cannot have negative quantities.
+- Inventory must be associated with a specific product and warehouse.
+- Inventory that does not exist or is marked as damaged cannot be reserved.
+
+---
+
+### ShoppingCart
+
+#### Description
+Represents the temporary and preparatory selection of products made by a Buyer before confirming a purchase. Precedes the formal Order.
+
+#### Attributes
+
+| Attribute | Type | Description |
+| :--- | :--- | :--- |
+| buyer | Buyer | User who owns the shopping session. |
+| selectedProducts | List\<Product\> | Products temporarily added before checkout. |
+
+---
+
 ### Order
 
 #### Description
@@ -233,6 +288,21 @@ DISPATCHED
  ▼
 DELIVERED
 ```
+
+---
+
+### Invoice
+
+#### Description
+Commercial document that financially supports a successful order. Generated automatically when an Order transitions to the PAID state.
+
+#### Attributes
+
+| Attribute | Type | Description |
+| :--- | :--- | :--- |
+| id | String | Fiscal consecutive identifier. |
+| order | Order | Base commercial transaction. |
+| totalAmount | double | Total settled amount of the purchase. |
 
 ---
 
