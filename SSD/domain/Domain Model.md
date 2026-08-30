@@ -2,14 +2,15 @@
 
 ## Introduction
 
-The Domain Model defines the core business entities for the NexusMarket platform. These entities encapsulate the information, business rules, relationships, and lifecycles described in the functional specification.
+The Domain Model represents the core business entities of the NexusMarket platform[cite: 2]. These entities encapsulate the business rules, data, relationships, and lifecycle concepts described in the system specification[cite: 2].
 
-The model follows Object-Oriented Design (OOD) and Domain-Driven Design (DDD) principles. Inheritance is applied for genuine domain specializations, and direct object associations are prioritized over generic identifier fields.
+The model follows Object-Oriented Design (OOD) and Domain-Driven Design (DDD) principles[cite: 2]. Inheritance is used to represent genuine domain specialization, while explicit object relationships and strongly-typed Domain Value Objects are preferred over primitive types[cite: 1, 3].
 
-The ecosystem is composed of:
-*   **Users:** Authenticated participants in the system (Buyers, Sellers, Logistics Operators, Administrators, Supervisors).
-*   **Catalog and Inventory:** Management of Products, Warehouses, and physical Inventory.
-*   **Commercial Operation:** The flow that originates in the Shopping Cart, formalizes as an Order, and concludes with Logistics (Shipment) and Billing (Invoice).
+The model distinguishes between:
+*   **Users:** Authenticated participants authorized to interact with the Marketplace (Buyer, Seller, Logistics Operator, Administrator, Supervisor)[cite: 1, 2].
+*   **Products:** Physical or digital goods offered on the platform[cite: 1, 2].
+*   **Inventory & Warehouses:** Distributed stock managed across specialized physical storage locations[cite: 1, 2].
+*   **Commercial Lifecycle:** The flow from temporary selection (Shopping Cart) to confirmed commercial commitment (Order), followed by logistical dispatch (Shipment), post-sale operations (Return, Refund), and financial records (Invoice)[cite: 1].
 
 ---
 
@@ -29,15 +30,13 @@ Product (Abstract)
 
 Warehouse
 
-Inventory
-
-ShoppingCart
-
 Order
 
-Invoice
-
 Shipment
+
+Return
+
+Refund
 ```
 
 ---
@@ -48,29 +47,28 @@ Shipment
 User
    │
    ├── Buyer
-   │      ├── manages ───────────> ShoppingCart
-   │      └── creates ───────────> Order
+   │      └── creates ────────────> Order
    │
    └── Seller
-          └── manages ───────────> Product
+          └── manages ────────────> Product
 
-Product
-   │
-   └── requires ─────────────────> Inventory
+LogisticsOperator
+   └── manages ───────────────────> Shipment
 
-Warehouse
-   │
-   └── stores ───────────────────> Inventory
+Administrator
+   ├── registers ─────────────────> Seller
+   └── registers ─────────────────> Warehouse
 
-ShoppingCart
-   │
-   └── contains ─────────────────> Product
+Supervisor
+   └── consults ──────────────────> Marketplace Information
 
 Order
-   ├── created by ───────────────> Buyer
-   ├── contains ─────────────────> Product
-   ├── generates ────────────────> Invoice
-   └── triggers ─────────────────> Shipment
+   ├── associated with ───────────> Buyer
+   ├── contains ──────────────────> Product
+   ├── generates ─────────────────> Shipment
+   └── may generate ──────────────> Return
+                                       │
+                                       └── may generate ──> Refund
 ```
 
 ---
@@ -82,175 +80,207 @@ Order
 ### User (Abstract)
 
 #### Description
-Represents any participant authorized to interact with the Marketplace. It centralizes identity, contact, and operational security information. Every user is assigned a strict single role.
+Represents any participant authorized to interact with the NexusMarket Marketplace[cite: 1]. It centralizes shared identity and operational access information[cite: 1, 2]. Every user is assigned a single strict role[cite: 1]. This class cannot be instantiated directly[cite: 1].
 
 #### Attributes
 
 | Attribute | Type | Description |
 | :--- | :--- | :--- |
-| identifier | String | Unique identifier or document within the system. |
-| fullName | String | Official and legal name of the user. |
-| email | String | Primary channel for communication and access. |
-| role | String | Assigned business role. |
-| status | String | Current operational condition (e.g., Active, Blocked). |
+| identifier | String | Unique identifier or document of the user[cite: 1, 2]. |
+| fullName | String | Official full name of the user[cite: 1, 2]. |
+| email | String | Primary email address for access and communication[cite: 1, 2]. |
+| role | SystemRole | Business role assigned to the user[cite: 1]. |
+| status | UserStatus | Current operational status of the user[cite: 1]. |
 
 ---
 
 ### Buyer
 
 #### Description
-A specialized user who acquires products within the platform. Manages temporary selections and consolidates commercial transactions.
+Represents an authorized user who acquires products published on the Marketplace[cite: 1, 2]. Manages delivery locations and places commercial orders[cite: 1, 2].
 
 #### Inherits From
-`User`
+`User`[cite: 1, 2]
 
 #### Attributes
 
 | Attribute | Type | Description |
 | :--- | :--- | :--- |
-| mainAddress | String | Default location for logistics and deliveries. |
-| additionalAddresses | List<String> | Alternative delivery points. |
-| commercialStatus | String | Current capacity to execute purchases. |
+| mainAddress | String | Primary location used for product deliveries[cite: 1, 2]. |
+| additionalAddresses | List<String> | Secondary delivery locations registered by the buyer[cite: 1, 2]. |
+| commercialStatus | CommercialStatus | Current commercial condition for making purchases[cite: 1]. |
 
 ---
 
 ### Seller
 
 #### Description
-A specialized user responsible for populating the Marketplace catalog. Manages the information of commercialized goods and cannot self-register in the system (must be incorporated by an Administrator).
+Represents a specialized user responsible for registering and commercializing products in the catalog[cite: 1, 2]. Sellers cannot self-register; they are incorporated by an Administrator[cite: 1, 2].
 
 #### Inherits From
-`User`
-
-*(Note: Inherits all identity and status attributes from the parent class; no additional specific attributes are required in this phase of the domain).*
+`User`[cite: 1, 2]
 
 ---
 
-### Product
+### LogisticsOperator
 
 #### Description
-Represents the goods (physical or digital) that make up the public NexusMarket catalog.
+Represents the participant responsible for physical logistics, warehouse management, and shipment dispatch operations[cite: 1].
+
+#### Inherits From
+`User`[cite: 1]
+
+---
+
+### Administrator
+
+#### Description
+Represents the participant responsible for administrative management, including incorporating sellers and registering their initial warehouses[cite: 1].
+
+#### Inherits From
+`User`[cite: 1]
+
+---
+
+### Supervisor
+
+#### Description
+Represents the participant responsible for consultation, operational monitoring, and auditing across the Marketplace[cite: 1].
+
+#### Inherits From
+`User`[cite: 1]
+
+---
+
+### Product (Abstract)
+
+#### Description
+Represents goods offered in the Marketplace catalog[cite: 1, 2]. This class cannot be instantiated directly[cite: 1].
 
 #### Attributes
 
 | Attribute | Type | Description |
 | :--- | :--- | :--- |
-| id | String | Unique catalog identifier. |
-| productType | String | Classification of the good as Physical or Digital. |
-| variants | List<String> | Differentiators (e.g., size, color, model). |
-| status | String | Visibility lifecycle (Published, Suspended, Discontinued). |
+| id | String | Unique identifier of the product[cite: 1, 2]. |
+| productType | ProductType | Classification defining whether the good is Physical or Digital[cite: 1]. |
+| variants | List<String> | Differences in color, size, model, or technical specifications[cite: 1, 2]. |
+| status | ProductStatus | Current publication status of the product[cite: 1]. |
+
+---
+
+### PhysicalProduct
+
+#### Description
+Represents a tangible good that requires physical inventory management, warehouse storage, and shipment dispatch[cite: 1].
+
+#### Inherits From
+`Product`[cite: 1]
+
+---
+
+### DigitalProduct
+
+#### Description
+Represents an intangible product delivered immediately after payment confirmation without physical logistics[cite: 1].
+
+#### Inherits From
+`Product`[cite: 1]
 
 ---
 
 ### Warehouse
 
 #### Description
-Physical or logical storage space where physical product stock is controlled.
+Represents a physical storage location used for stock control[cite: 1, 2].
 
 #### Attributes
 
 | Attribute | Type | Description |
 | :--- | :--- | :--- |
-| id | String | Infrastructure identifier. |
-| name | String | Commercial designation of the warehouse. |
-| warehouseType | String | Operational classification (Marketplace or Seller). |
-
----
-
-### Inventory
-
-#### Description
-Transactional entity that links products to their physical location and controls real-time availability.
-
-#### Attributes
-
-| Attribute | Type | Description |
-| :--- | :--- | :--- |
-| product | Product | Commercialized good being quantified. |
-| warehouse | Warehouse | Location where the merchandise resides. |
-| quantity | int | Available amount. **Constraint:** Can never be less than 0. |
-
----
-
-### ShoppingCart
-
-#### Description
-Temporary and preparatory grouping of products selected by a buyer before payment formalization.
-
-#### Attributes
-
-| Attribute | Type | Description |
-| :--- | :--- | :--- |
-| buyer | Buyer | User who owns the shopping session. |
-| selectedProducts | List<Product> | Temporarily added goods. |
+| id | String | Unique identifier of the warehouse[cite: 1, 2]. |
+| name | String | Commercial name of the warehouse[cite: 1, 2]. |
+| warehouseType | WarehouseType | Classification of the warehouse (Marketplace or Seller)[cite: 1]. |
 
 ---
 
 ### Order
 
 #### Description
-The transactional heart of the system. Formalizes the purchase intent and triggers financial and logistical flows.
+Represents a formal commercial commitment placed by a Buyer[cite: 1, 2]. It drives the central transactional lifecycle of the platform[cite: 1, 2].
 
 #### Attributes
 
 | Attribute | Type | Description |
 | :--- | :--- | :--- |
-| id | String | Official transaction identifier. |
-| buyer | Buyer | Owner of the order. |
-| products | List<Product> | Goods confirmed for purchase. |
-| status | String | Current execution phase. |
+| id | String | Unique identifier of the order[cite: 1, 2]. |
+| buyer | Buyer | Buyer who placed the order[cite: 1]. |
+| products | List<Product> | Products included in the purchase[cite: 1]. |
+| status | OrderStatus | Current state within the order lifecycle[cite: 1]. |
 
 #### Lifecycle
 ```text
 CART
-   │
-   ▼
+ │
+ ▼
 PENDING_PAYMENT
-   │
-   ▼
+ │
+ ▼
 PAID
-   │
-   ▼
+ │
+ ▼
 DISPATCHED
-   │
-   ▼
-DELIVERED / FINALIZED
+ │
+ ▼
+DELIVERED
 ```
-
----
-
-### Invoice
-
-#### Description
-Commercial document that financially supports a successful order.
-
-#### Attributes
-
-| Attribute | Type | Description |
-| :--- | :--- | :--- |
-| id | String | Fiscal consecutive number. |
-| order | Order | Base commercial transaction. |
-| totalAmount | double | Total settled amount. |
 
 ---
 
 ### Shipment
 
 #### Description
-Entity that encapsulates the logistical tracking of physical products from the warehouse to the buyer's hands.
+Encapsulates the logistics and physical transport process of an order to the buyer's destination[cite: 1].
 
 #### Attributes
 
 | Attribute | Type | Description |
 | :--- | :--- | :--- |
-| trackingId | String | Tracking or guide number. |
-| order | Order | Order requiring physical dispatch. |
-| logisticsOperator | String | Company or entity responsible for transportation. |
+| trackingId | String | Tracking or dispatch guide identifier. |
+| order | Order | Associated commercial order[cite: 1]. |
+| logisticsOperator | LogisticsOperator | Logistics operator in charge of the shipment. |
+
+---
+
+### Return
+
+#### Description
+Represents the post-sale reverse logistics process where a customer returns a product associated with an order[cite: 1].
+
+#### Attributes
+
+| Attribute | Type | Description |
+| :--- | :--- | :--- |
+| id | String | Unique identifier for the return process. |
+| order | Order | Commercial order associated with the return[cite: 1]. |
+
+---
+
+### Refund
+
+#### Description
+Represents the financial reimbursement process resulting from an approved product return[cite: 1].
+
+#### Attributes
+
+| Attribute | Type | Description |
+| :--- | :--- | :--- |
+| id | String | Unique identifier for the refund transaction. |
+| returnProcess | Return | The associated return process that triggered the refund[cite: 1]. |
 
 ---
 
 ## Domain Design Rules
 
-1. **Inventory Constraints:** The system protects stock integrity through direct domain validations (encapsulation). Under no circumstances can an `Inventory` object be instantiated or modified with negative quantities.
-2. **Transactional Immutability:** The lifecycle of an `Order` is unidirectional. Once an order reaches its final state, its attributes are immutable.
-3. **Object-Relational Mapping:** Direct object references are prioritized (e.g., `order : Order` within `Invoice`) instead of storing foreign keys (`orderId`), respecting pure DDD principles.
+1. **Explicit Domain Value Objects:** Controlled business states, types, and roles are implemented using dedicated Domain Value Objects (`enum`) instead of arbitrary primitive strings[cite: 1, 3].
+2. **Object Associations:** Entities reference related domain objects directly (e.g., `LogisticsOperator` inside `Shipment`, `Buyer` inside `Order`) rather than untyped identifier strings[cite: 1].
+3. **Strict Specialization:** Abstract base classes (`User`, `Product`) enforce code reuse and polymorphism across specific business actors and product types[cite: 1].

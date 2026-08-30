@@ -1,5 +1,2 @@
 package application.domain.models;
-
-public class Administrator extends User {
-    public Administrator() {}
-}
+public class Administrator extends User {}

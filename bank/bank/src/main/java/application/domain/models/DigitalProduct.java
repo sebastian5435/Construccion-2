@@ -1,5 +1,2 @@
 package application.domain.models;
-
-public class DigitalProduct extends Product {
-    public DigitalProduct() {}
-}
+public class DigitalProduct extends Product {}

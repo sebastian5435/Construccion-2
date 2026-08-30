@@ -1,5 +1,2 @@
 package application.domain.models;
-
-public class Supervisor extends User {
-    public Supervisor() {}
-}
+public class Supervisor extends User {}
