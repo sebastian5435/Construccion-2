@@ -1,15 +1,28 @@
 package application.domain.models;
+
 import application.domain.valueobjects.WarehouseType;
 
 public class Warehouse {
     private String id;
     private String name;
-    private WarehouseType warehouseType; 
+    private String address;
+    private WarehouseType warehouseType;
+    private Seller seller;
+
     public Warehouse() {}
+
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
+
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }
+
+    public String getAddress() { return address; }
+    public void setAddress(String address) { this.address = address; }
+
     public WarehouseType getWarehouseType() { return warehouseType; }
     public void setWarehouseType(WarehouseType warehouseType) { this.warehouseType = warehouseType; }
+
+    public Seller getSeller() { return seller; }
+    public void setSeller(Seller seller) { this.seller = seller; }
 }
