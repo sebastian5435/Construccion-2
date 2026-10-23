@@ -20,8 +20,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Transactional
 public class ReturnRefundService implements ReturnRefundUseCase {
 
     private final ReturnRepositoryPort returnRepository;

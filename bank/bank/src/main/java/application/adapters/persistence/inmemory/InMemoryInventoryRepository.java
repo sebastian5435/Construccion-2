@@ -9,9 +9,11 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 @Repository
+@Profile("inmemory")
 public class InMemoryInventoryRepository implements InventoryRepositoryPort {
 
     private final Map<String, Inventory> inventories = new ConcurrentHashMap<>();

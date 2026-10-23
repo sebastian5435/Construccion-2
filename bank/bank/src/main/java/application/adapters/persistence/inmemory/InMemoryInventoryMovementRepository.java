@@ -7,9 +7,11 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 @Repository
+@Profile("inmemory")
 public class InMemoryInventoryMovementRepository implements InventoryMovementRepositoryPort {
 
     private final List<InventoryMovement> movements = new CopyOnWriteArrayList<>();

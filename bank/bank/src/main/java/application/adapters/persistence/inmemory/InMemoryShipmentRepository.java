@@ -8,9 +8,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 @Repository
+@Profile("inmemory")
 public class InMemoryShipmentRepository implements ShipmentRepositoryPort {
 
     private final Map<String, Shipment> shipments = new ConcurrentHashMap<>();

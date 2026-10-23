@@ -7,8 +7,9 @@ Output Ports are the **interfaces the domain requires from the outside world**. 
 Following the Hexagonal Architecture pattern:
 
 * Domain Services depend on Output Port interfaces, never on concrete implementations.
-* Concrete adapters (in-memory, JPA, MongoDB, HTTP clients, etc.) implement these ports and are injected at runtime by Spring.
-* This delivery ships with **in-memory adapters** located under `adapters/persistence/inmemory/`. They allow the application to run end-to-end without a real database. Production-grade adapters (JPA / MongoDB) will be delivered in a later phase.
+* Concrete adapters implement these ports and are injected at runtime by Spring.
+* **MySQL adapters (default):** `adapters/persistence/jpa/adapters/` implement every port with Spring Data JPA. JPA entities live in `jpa/entities/` and are translated to and from domain models by `JpaDomainMapper`, so no persistence annotation ever reaches the domain.
+* **In-memory adapters:** `adapters/persistence/inmemory/` keep the earlier implementation. They are only activated with the Spring profile `inmemory` and are used by the domain flow tests.
 
 ---
 
@@ -178,4 +179,4 @@ Persistence contract for the stock movement history. Movements are append-only.
 1. **Interface segregation:** Each Output Port exposes only the operations required by the services that depend on it.
 2. **Domain-typed contracts:** Ports return domain models directly. No persistence entities, DTOs, or framework classes appear in port signatures.
 3. **Optional-based lookups:** All single-entity lookups return `Optional<T>` so services can decide how to handle the absent case explicitly.
-4. **Adapter interchangeability:** The in-memory adapters shipped with this delivery can be swapped for JPA or MongoDB adapters without touching any service.
+4. **Adapter interchangeability:** The in-memory and MySQL adapters implement the same ports; switching between them is a profile change and does not touch any service.

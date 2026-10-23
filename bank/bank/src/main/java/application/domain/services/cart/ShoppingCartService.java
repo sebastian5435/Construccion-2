@@ -14,8 +14,10 @@ import application.domain.services.access.AccessGuard;
 import application.domain.valueobjects.SystemRole;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Transactional
 public class ShoppingCartService implements ShoppingCartUseCase {
 
     private final ShoppingCartRepositoryPort cartRepository;

@@ -8,9 +8,11 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Repository;
 
 @Repository
+@Profile("inmemory")
 public class InMemoryInvoiceRepository implements InvoiceRepositoryPort {
 
     private final Map<String, Invoice> invoices = new ConcurrentHashMap<>();
