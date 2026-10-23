@@ -2,15 +2,13 @@
 
 ## Introduction
 
-Domain Services encapsulate the business logic of the NexusMarket platform. They orchestrate the interaction between entities, enforce business rules, and expose the use cases defined in the functional specification.
+Domain Services encapsulate the business logic of the NexusMarket platform that does not belong to a single entity. They orchestrate entities, enforce cross-entity business rules, and expose the use cases defined in the functional specification.
 
 The services follow the **Hexagonal Architecture** (Ports & Adapters) pattern:
 
-* Each service **implements** an **Input Port** (a use-case interface) that defines what the system can do.
-* Each service **depends** on one or more **Output Ports** (repository interfaces) that define what the system needs from the outside world.
-* Services never depend on concrete infrastructure; they depend on abstractions.
-
-This separation guarantees that business logic remains independent of persistence, transport, and framework details.
+* Each use-case service **implements** an **Input Port**.
+* Each service **depends** on **Output Ports** (repository interfaces), never on concrete adapters.
+* Rules that only involve one entity's state live in the entity itself (see *Domain Model*); services coordinate.
 
 ---
 
@@ -25,175 +23,144 @@ ShoppingCartService         → ShoppingCartUseCase
 OrderProcessingService      → OrderProcessingUseCase
 ShipmentService             → ShipmentManagementUseCase
 ReturnRefundService         → ReturnRefundUseCase
+MarketplaceReportService    → MarketplaceReportUseCase
+
+AccessGuard                 (internal: role and status authorization)
+StockMovementService        (internal: stock flow of orders + movement history)
 ```
 
-Each service is annotated with `@Service` and receives its dependencies through **constructor injection**, following the Dependency Inversion Principle.
+Every class receives its dependencies through **constructor injection**.
+
+---
+
+## Internal Domain Services
+
+### AccessGuard
+
+Single place where RG-01, RG-02, and RG-03 are enforced. `requireActiveUser(userId, action, allowedRoles...)` verifies that the user exists, has one of the allowed roles, and is `ACTIVE`; otherwise it raises `EntityNotFoundException`, `UnauthorizedRoleException`, or `InvalidOperationException`.
+
+### StockMovementService
+
+Connects the inventory with the commercial lifecycle and records every `InventoryMovement`.
+
+| Operation | Triggered by | Movement |
+| :--- | :--- | :--- |
+| `reserveForOrder(order, user)` | `placeOrder` | RESERVATION |
+| `releaseForOrder(order, user)` | `cancelOrder` | RESERVATION_RELEASE |
+| `consumeForOrder(order, user)` | `dispatchShipment` | SALE_EXIT |
+| `restockForOrder(order, user)` | `generateRefund` | RETURN |
+
+Reservation picks, for each physical item, the first non-damaged warehouse with enough available units. All items are allocated before any stock is touched, so a failure leaves the inventory unchanged. Digital items are ignored.
 
 ---
 
 ## UserService
 
-### Responsibility
-Manages the full lifecycle of every user type: registration, activation, blocking, and lookup.
+**Covers:** `OBJ-01`, `OBJ-02`, `OBJ-03` · **Depends on:** `UserRepositoryPort`, `WarehouseRepositoryPort`, `AccessGuard`
 
-### Covers Objectives
-`OBJ-01`, `OBJ-02`, `OBJ-03`
-
-### Business Rules Enforced
-* Email must be unique across the platform.
-* Identifier (document) must be unique across the platform.
-* Buyers may self-register. Sellers, Logistics Operators, Supervisors, and Administrators are **only** created by an active Administrator.
-* Only Administrators can block or activate a user.
-* The user performing an administrative action must have `status = ACTIVE`.
-
-### Dependencies
-`UserRepositoryPort`
+* Email and identity document are unique across the platform.
+* Buyers self-register and must provide a main address; they start `ACTIVE` and `ENABLED`.
+* Sellers, Logistics Operators, Supervisors, and Administrators are created only by an active Administrator.
+* A Seller is always registered together with their first warehouse (flow step "Incorporación").
+* Only Administrators can block or activate users, and an Administrator cannot block themselves.
 
 ---
 
 ## WarehouseService
 
-### Responsibility
-Handles the creation and administration of physical storage locations.
+**Covers:** `OBJ-04` · **Depends on:** `WarehouseRepositoryPort`, `UserRepositoryPort`, `AccessGuard`
 
-### Covers Objectives
-`OBJ-04`
-
-### Business Rules Enforced
-* Marketplace warehouses can only be registered by an Administrator.
-* Seller warehouses can only be registered by the Seller who owns them.
-* A warehouse must have a name and an address.
-* A Marketplace warehouse never has an associated Seller; a Seller warehouse always does.
-
-### Dependencies
-`WarehouseRepositoryPort`, `UserRepositoryPort`
+* Only Administrators register warehouses, both Marketplace and Seller ones.
+* A warehouse requires a name and an address.
+* A Marketplace warehouse never has a Seller; a Seller warehouse always does.
 
 ---
 
 ## ProductService
 
-### Responsibility
-Manages the product catalog: creation, updates, and lifecycle transitions between `PUBLISHED`, `SUSPENDED`, and `DISCONTINUED`.
+**Covers:** `OBJ-05` · **Depends on:** `ProductRepositoryPort`, `InventoryRepositoryPort`, `AccessGuard`
 
-### Covers Objectives
-`OBJ-05`
-
-### Business Rules Enforced
-* Only the Seller who created a product can modify its state.
-* The price of a product cannot be negative.
-* Discontinued products cannot be updated, republished, or suspended.
-* Every product must have a name and a product type.
-
-### Dependencies
-`ProductRepositoryPort`, `UserRepositoryPort`
+* Only active Sellers create products, and only the owner can modify them.
+* New products start `SUSPENDED` (flow: catalog → inventory → publication).
+* A physical product needs available, non-damaged stock before it can be published.
+* Name is required, price cannot be negative, and the product type cannot change.
+* Discontinued products cannot be updated, published, or suspended.
 
 ---
 
 ## InventoryService
 
-### Responsibility
-Manages distributed inventory across warehouses. Ensures the integrity of stock across the entire commercial cycle.
+**Covers:** `OBJ-06` · **Depends on:** `InventoryRepositoryPort`, `InventoryMovementRepositoryPort`, `ProductRepositoryPort`, `WarehouseRepositoryPort`, `StockMovementService`, `AccessGuard`
 
-### Covers Objectives
-`OBJ-06`
-
-### Business Rules Enforced
-* **Inventory can never be negative**, under any operation.
-* An inventory record must be linked to an existing Product and an existing Warehouse.
-* An `(product, warehouse)` pair can only have one inventory record.
-* You cannot reserve more units than the current available quantity.
-* You cannot release or consume more units than the currently reserved quantity.
-* An adjusted quantity cannot be lower than the reserved quantity.
-
-### Dependencies
-`InventoryRepositoryPort`, `ProductRepositoryPort`, `WarehouseRepositoryPort`
+* Only Logistics Operators and the owner Seller can manage a product's inventory.
+* Only physical, non-discontinued products can be stocked.
+* A product can only be stocked in a Marketplace warehouse or in its own Seller's warehouse.
+* One inventory record per `(product, warehouse)`.
+* Inventory is never negative; adjusted quantities cannot go below the reserved quantity.
+* Damaged inventory reports 0 available units and cannot be reserved.
+* Every manual change records an `InventoryMovement`.
 
 ---
 
 ## ShoppingCartService
 
-### Responsibility
-Manages the temporary product selection that a Buyer prepares before confirming a purchase.
+**Covers:** `OBJ-07` · **Depends on:** `ShoppingCartRepositoryPort`, `ProductRepositoryPort`, `AccessGuard`
 
-### Covers Objectives
-`OBJ-07`
-
-### Business Rules Enforced
 * Only an active Buyer with `commercialStatus = ENABLED` can operate a cart.
-* A Buyer has at most one active shopping cart at a time.
-* Only products with `status = PUBLISHED` can be added to a cart.
-* A quantity must be greater than zero.
-
-### Dependencies
-`ShoppingCartRepositoryPort`, `UserRepositoryPort`, `ProductRepositoryPort`
+* A Buyer has at most one cart.
+* Only `PUBLISHED` products can be added; quantities must be greater than zero.
+* The unit price is captured when the product is added.
 
 ---
 
 ## OrderProcessingService
 
-### Responsibility
-Central transactional service. Orchestrates the complete order lifecycle and generates the associated invoice.
+**Covers:** `OBJ-08`, `OBJ-09` · **Depends on:** `OrderRepositoryPort`, `InvoiceRepositoryPort`, `ShoppingCartRepositoryPort`, `StockMovementService`, `AccessGuard`
 
-### Covers Objectives
-`OBJ-08`, `OBJ-09`
-
-### Business Rules Enforced
-* An order cannot be placed from an empty shopping cart.
-* Order transitions follow the strict sequence:
-  `CART → PENDING_PAYMENT → PAID → DISPATCHED → DELIVERED`.
-  Any other transition raises `InvalidOrderStateTransitionException`.
-* Once an order reaches `DELIVERED` it is finalized and cannot be modified.
-* Paying an order automatically generates an `Invoice`.
-* Only a Logistics Operator can dispatch or deliver an order.
-* Only the Buyer who placed an order can cancel it, and only if it has not been dispatched.
-
-### Dependencies
-`OrderRepositoryPort`, `InvoiceRepositoryPort`, `ShoppingCartRepositoryPort`, `UserRepositoryPort`
+* An order cannot be placed from an empty cart, and every product must still be published.
+* The delivery address must be one of the buyer's addresses (main address by default).
+* Placing an order reserves stock for every physical item; if any item lacks stock, nothing is reserved.
+* Only the Buyer who placed the order can pay or cancel it.
+* Paying generates the `Invoice` automatically. Digital-only orders are delivered immediately.
+* Only `PENDING_PAYMENT` orders can be cancelled; cancellation releases the reservation. Paid orders follow the return/refund flow.
+* `DELIVERED` and `CANCELLED` orders cannot be modified.
 
 ---
 
 ## ShipmentService
 
-### Responsibility
-Manages the logistics dispatch of paid orders.
+**Covers:** `OBJ-10` · **Depends on:** `ShipmentRepositoryPort`, `OrderRepositoryPort`, `StockMovementService`, `AccessGuard`
 
-### Covers Objectives
-`OBJ-10`
-
-### Business Rules Enforced
-* A shipment can only be created for an order in `PAID` status.
-* An order can have at most one associated shipment.
-* Only an active Logistics Operator can create a shipment.
-
-### Dependencies
-`ShipmentRepositoryPort`, `OrderRepositoryPort`, `UserRepositoryPort`
+* Only active Logistics Operators create shipments, and only for `PAID` orders with physical products.
+* An order has at most one shipment; its destination is the order's delivery address.
+* Only the operator assigned to the shipment can dispatch it or confirm its delivery.
+* Dispatching consumes the reserved stock (SALE_EXIT).
 
 ---
 
 ## ReturnRefundService
 
-### Responsibility
-Manages the post-sale reverse flow: returns of delivered products and their associated refunds.
+**Covers:** `OBJ-11` · **Depends on:** `ReturnRepositoryPort`, `RefundRepositoryPort`, `OrderRepositoryPort`, `StockMovementService`, `AccessGuard`
 
-### Covers Objectives
-`OBJ-11`
+* Only the Buyer who placed a `DELIVERED` order can request its return, with a reason, once per order.
+* Only Administrators resolve returns, and each return is resolved once.
+* Approving a return (`generateRefund`) puts physical units back in their source warehouse (RETURN) and issues a single refund for the order total.
 
-### Business Rules Enforced
-* A return can only be requested for an order in `DELIVERED` status.
-* Only the Buyer who placed the order can request its return.
-* Only one return process may exist per order.
-* Only an Administrator can generate a refund.
-* Only one refund may exist per return process.
+---
 
-### Dependencies
-`ReturnRepositoryPort`, `RefundRepositoryPort`, `OrderRepositoryPort`, `UserRepositoryPort`
+## MarketplaceReportService
+
+**Covers:** `OBJ-12` · **Depends on:** all read repositories, `AccessGuard`
+
+* Only Supervisors and Administrators can consult reports.
+* The operational report is computed on demand from the current data.
 
 ---
 
 ## Design Rules
 
-1. **Single Responsibility:** Each service handles one bounded business capability.
-2. **Dependency Inversion:** Services depend on Output Port interfaces, never on concrete adapters.
-3. **Explicit Business Rules:** Every rule from the functional specification is enforced by an explicit check that throws a specific `DomainException`.
-4. **Immutable Transitions:** State transitions (Order, Product, User) are validated before being applied.
-5. **Constructor Injection:** All dependencies are declared final and injected through the constructor.
+1. **Single Responsibility:** Each service handles one business capability.
+2. **Dependency Inversion:** Services depend on Output Port interfaces, never on adapters.
+3. **Explicit Business Rules:** Every rule throws a specific `DomainException`.
+4. **Rich Entities, thin services:** State transitions and invariants are validated by the entities; services handle authorization, lookups, and coordination.
+5. **No duplicated cross-cutting logic:** Authorization lives in `AccessGuard` and stock flow in `StockMovementService`.

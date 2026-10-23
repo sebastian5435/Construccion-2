@@ -1,2 +1,11 @@
 package application.domain.models;
-public class PhysicalProduct extends Product {}
+
+import application.domain.valueobjects.ProductType;
+
+public class PhysicalProduct extends Product {
+
+    @Override
+    public ProductType getProductType() {
+        return ProductType.PHYSICAL;
+    }
+}

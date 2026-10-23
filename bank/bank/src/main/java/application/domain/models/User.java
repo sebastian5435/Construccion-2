@@ -20,4 +20,12 @@ public abstract class User {
     public void setRole(SystemRole role) { this.role = role; }
     public UserStatus getStatus() { return status; }
     public void setStatus(UserStatus status) { this.status = status; }
+
+    public boolean isActive() {
+        return status == UserStatus.ACTIVE;
+    }
+
+    public boolean hasRole(SystemRole expectedRole) {
+        return role == expectedRole;
+    }
 }

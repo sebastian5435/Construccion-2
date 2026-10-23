@@ -11,7 +11,7 @@ public interface WarehouseManagementUseCase {
 
     Warehouse registerMarketplaceWarehouse(Warehouse warehouse, String administratorId);
 
-    Warehouse registerSellerWarehouse(Warehouse warehouse, String sellerId);
+    Warehouse registerSellerWarehouse(Warehouse warehouse, String sellerId, String administratorId);
 
     Warehouse findWarehouseById(String warehouseId);
 

@@ -19,6 +19,7 @@ UserRepositoryPort
 WarehouseRepositoryPort
 ProductRepositoryPort
 InventoryRepositoryPort
+InventoryMovementRepositoryPort
 ShoppingCartRepositoryPort
 OrderRepositoryPort
 InvoiceRepositoryPort
@@ -84,6 +85,18 @@ Persistence contract for every user in the platform (all roles included via poly
 | `findByWarehouse(warehouseId)` | Lists inventory inside a warehouse. |
 | `findAll()` | Returns every inventory record. |
 | `deleteById(id)` | Removes an inventory record. |
+
+---
+
+## InventoryMovementRepositoryPort
+
+Persistence contract for the stock movement history. Movements are append-only.
+
+| Method | Description |
+| :--- | :--- |
+| `save(InventoryMovement)` | Records a movement. |
+| `findByInventoryId(inventoryId)` | Movement history of an inventory record, in chronological order. |
+| `findAll()` | Returns every movement. |
 
 ---
 

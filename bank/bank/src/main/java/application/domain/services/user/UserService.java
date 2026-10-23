@@ -4,18 +4,21 @@ import application.domain.exceptions.DuplicateEmailException;
 import application.domain.exceptions.DuplicateIdentifierException;
 import application.domain.exceptions.EntityNotFoundException;
 import application.domain.exceptions.InvalidOperationException;
-import application.domain.exceptions.UnauthorizedRoleException;
 import application.domain.models.Administrator;
 import application.domain.models.Buyer;
 import application.domain.models.LogisticsOperator;
 import application.domain.models.Seller;
 import application.domain.models.Supervisor;
 import application.domain.models.User;
+import application.domain.models.Warehouse;
 import application.domain.ports.input.UserManagementUseCase;
 import application.domain.ports.output.UserRepositoryPort;
+import application.domain.ports.output.WarehouseRepositoryPort;
+import application.domain.services.access.AccessGuard;
 import application.domain.valueobjects.CommercialStatus;
 import application.domain.valueobjects.SystemRole;
 import application.domain.valueobjects.UserStatus;
+import application.domain.valueobjects.WarehouseType;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
@@ -23,14 +26,23 @@ import org.springframework.stereotype.Service;
 public class UserService implements UserManagementUseCase {
 
     private final UserRepositoryPort userRepository;
+    private final WarehouseRepositoryPort warehouseRepository;
+    private final AccessGuard accessGuard;
 
-    public UserService(UserRepositoryPort userRepository) {
+    public UserService(UserRepositoryPort userRepository,
+                       WarehouseRepositoryPort warehouseRepository,
+                       AccessGuard accessGuard) {
         this.userRepository = userRepository;
+        this.warehouseRepository = warehouseRepository;
+        this.accessGuard = accessGuard;
     }
 
     @Override
     public Buyer registerBuyer(Buyer buyer) {
         validateNewUser(buyer);
+        if (buyer.getMainAddress() == null || buyer.getMainAddress().isBlank()) {
+            throw new InvalidOperationException("Main address is required for buyers.");
+        }
         buyer.setRole(SystemRole.BUYER);
         buyer.setStatus(UserStatus.ACTIVE);
         if (buyer.getCommercialStatus() == null) {
@@ -40,12 +52,22 @@ public class UserService implements UserManagementUseCase {
     }
 
     @Override
-    public Seller registerSeller(Seller seller, String administratorId) {
+    public Seller registerSeller(Seller seller, Warehouse firstWarehouse, String administratorId) {
         requireAdministrator(administratorId, "registerSeller");
         validateNewUser(seller);
+        if (firstWarehouse == null) {
+            throw new InvalidOperationException(
+                    "A seller must be registered together with their first warehouse.");
+        }
+        firstWarehouse.validateRequiredData();
         seller.setRole(SystemRole.SELLER);
         seller.setStatus(UserStatus.ACTIVE);
-        return (Seller) userRepository.save(seller);
+        Seller savedSeller = (Seller) userRepository.save(seller);
+
+        firstWarehouse.setWarehouseType(WarehouseType.SELLER);
+        firstWarehouse.setSeller(savedSeller);
+        warehouseRepository.save(firstWarehouse);
+        return savedSeller;
     }
 
     @Override
@@ -78,6 +100,9 @@ public class UserService implements UserManagementUseCase {
     @Override
     public User blockUser(String userId, String administratorId) {
         requireAdministrator(administratorId, "blockUser");
+        if (userId.equals(administratorId)) {
+            throw new InvalidOperationException("An administrator cannot block themselves.");
+        }
         User user = findUserById(userId);
         user.setStatus(UserStatus.BLOCKED);
         return userRepository.save(user);
@@ -128,13 +153,6 @@ public class UserService implements UserManagementUseCase {
     }
 
     private void requireAdministrator(String userId, String action) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new EntityNotFoundException("User", userId));
-        if (user.getRole() != SystemRole.ADMINISTRATOR) {
-            throw new UnauthorizedRoleException(action, SystemRole.ADMINISTRATOR.name());
-        }
-        if (user.getStatus() != UserStatus.ACTIVE) {
-            throw new InvalidOperationException("Administrator " + userId + " is not active.");
-        }
+        accessGuard.requireActiveUser(userId, action, SystemRole.ADMINISTRATOR);
     }
 }

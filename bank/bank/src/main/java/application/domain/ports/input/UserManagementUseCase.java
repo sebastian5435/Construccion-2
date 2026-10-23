@@ -6,6 +6,7 @@ import application.domain.models.LogisticsOperator;
 import application.domain.models.Seller;
 import application.domain.models.Supervisor;
 import application.domain.models.User;
+import application.domain.models.Warehouse;
 import java.util.List;
 
 /**
@@ -16,7 +17,7 @@ public interface UserManagementUseCase {
 
     Buyer registerBuyer(Buyer buyer);
 
-    Seller registerSeller(Seller seller, String administratorId);
+    Seller registerSeller(Seller seller, Warehouse firstWarehouse, String administratorId);
 
     LogisticsOperator registerLogisticsOperator(LogisticsOperator operator, String administratorId);
 

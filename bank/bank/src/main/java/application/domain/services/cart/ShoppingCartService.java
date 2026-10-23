@@ -3,20 +3,15 @@ package application.domain.services.cart;
 import application.domain.exceptions.EntityNotFoundException;
 import application.domain.exceptions.InvalidOperationException;
 import application.domain.exceptions.ProductNotAvailableException;
-import application.domain.exceptions.UnauthorizedRoleException;
 import application.domain.models.Buyer;
 import application.domain.models.OrderItem;
 import application.domain.models.Product;
 import application.domain.models.ShoppingCart;
-import application.domain.models.User;
 import application.domain.ports.input.ShoppingCartUseCase;
 import application.domain.ports.output.ProductRepositoryPort;
 import application.domain.ports.output.ShoppingCartRepositoryPort;
-import application.domain.ports.output.UserRepositoryPort;
-import application.domain.valueobjects.CommercialStatus;
-import application.domain.valueobjects.ProductStatus;
+import application.domain.services.access.AccessGuard;
 import application.domain.valueobjects.SystemRole;
-import application.domain.valueobjects.UserStatus;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
@@ -24,15 +19,15 @@ import org.springframework.stereotype.Service;
 public class ShoppingCartService implements ShoppingCartUseCase {
 
     private final ShoppingCartRepositoryPort cartRepository;
-    private final UserRepositoryPort userRepository;
     private final ProductRepositoryPort productRepository;
+    private final AccessGuard accessGuard;
 
     public ShoppingCartService(ShoppingCartRepositoryPort cartRepository,
-                               UserRepositoryPort userRepository,
-                               ProductRepositoryPort productRepository) {
+                               ProductRepositoryPort productRepository,
+                               AccessGuard accessGuard) {
         this.cartRepository = cartRepository;
-        this.userRepository = userRepository;
         this.productRepository = productRepository;
+        this.accessGuard = accessGuard;
     }
 
     @Override
@@ -120,16 +115,8 @@ public class ShoppingCartService implements ShoppingCartUseCase {
     }
 
     private Buyer requireActiveBuyer(String buyerId) {
-        User user = userRepository.findById(buyerId)
-                .orElseThrow(() -> new EntityNotFoundException("User", buyerId));
-        if (user.getRole() != SystemRole.BUYER) {
-            throw new UnauthorizedRoleException("shopping cart operations", SystemRole.BUYER.name());
-        }
-        if (user.getStatus() != UserStatus.ACTIVE) {
-            throw new InvalidOperationException("Buyer " + buyerId + " is not active.");
-        }
-        Buyer buyer = (Buyer) user;
-        if (buyer.getCommercialStatus() != CommercialStatus.ENABLED) {
+        Buyer buyer = (Buyer) accessGuard.requireActiveUser(buyerId, "shopping cart operations", SystemRole.BUYER);
+        if (!buyer.canPurchase()) {
             throw new InvalidOperationException(
                     "Buyer " + buyerId + " has commercial restrictions applied.");
         }
@@ -139,7 +126,7 @@ public class ShoppingCartService implements ShoppingCartUseCase {
     private Product requireAvailableProduct(String productId) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new EntityNotFoundException("Product", productId));
-        if (product.getStatus() != ProductStatus.PUBLISHED) {
+        if (!product.isPublished()) {
             throw new ProductNotAvailableException(productId,
                     "product status is " + product.getStatus());
         }

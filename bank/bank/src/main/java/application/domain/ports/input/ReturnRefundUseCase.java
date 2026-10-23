@@ -2,6 +2,7 @@ package application.domain.ports.input;
 
 import application.domain.models.Refund;
 import application.domain.models.Return;
+import java.util.List;
 
 /**
  * Manages the post-sale flow of returns and refunds.
@@ -9,11 +10,15 @@ import application.domain.models.Return;
  */
 public interface ReturnRefundUseCase {
 
-    Return requestReturn(String orderId, String buyerId);
+    Return requestReturn(String orderId, String buyerId, String reason);
 
     Refund generateRefund(String returnId, String administratorId);
 
+    Return rejectReturn(String returnId, String administratorId);
+
     Return findReturnById(String returnId);
+
+    List<Return> listPendingReturns(String administratorId);
 
     Refund findRefundById(String refundId);
 

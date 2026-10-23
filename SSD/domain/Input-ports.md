@@ -8,9 +8,7 @@ Following the Hexagonal Architecture pattern:
 
 * Every use case defined in the functional specification is expressed as a method on an Input Port.
 * Domain Services implement these interfaces and contain the business logic.
-* External adapters (REST controllers, message consumers, CLI, tests) can invoke the system by depending only on the Input Ports, never on the concrete services.
-
-This design keeps the domain free from framework and delivery-mechanism concerns.
+* External adapters (REST controllers, tests) invoke the system by depending only on the Input Ports, never on the concrete services.
 
 ---
 
@@ -25,142 +23,141 @@ ShoppingCartUseCase            → OBJ-07
 OrderProcessingUseCase         → OBJ-08, OBJ-09
 ShipmentManagementUseCase      → OBJ-10
 ReturnRefundUseCase            → OBJ-11
+MarketplaceReportUseCase       → OBJ-12
 ```
 
 ---
 
 ## UserManagementUseCase
 
-Manages user registration, activation, and consultation.
-
-| Method | Description |
-| :--- | :--- |
-| `registerBuyer(Buyer)` | Self-registration of a Buyer. |
-| `registerSeller(Seller, adminId)` | Administrator registers a new Seller. |
-| `registerLogisticsOperator(LogisticsOperator, adminId)` | Administrator registers a new Logistics Operator. |
-| `registerSupervisor(Supervisor, adminId)` | Administrator registers a new Supervisor. |
-| `registerAdministrator(Administrator, requesterAdminId)` | An existing Administrator registers another Administrator. |
-| `blockUser(userId, adminId)` | Administrator blocks a user. |
-| `activateUser(userId, adminId)` | Administrator reactivates a blocked user. |
-| `findUserById(id)` | Retrieves a user by identifier. |
-| `findUserByEmail(email)` | Retrieves a user by email. |
-| `listAllUsers(adminId)` | Administrator lists every user. |
+| Method | Allowed role | Description |
+| :--- | :--- | :--- |
+| `registerBuyer(Buyer)` | Anyone | Self-registration of a Buyer. Main address required. |
+| `registerSeller(Seller, firstWarehouse, adminId)` | Administrator | Registers a Seller together with their first warehouse. |
+| `registerLogisticsOperator(LogisticsOperator, adminId)` | Administrator | Registers a Logistics Operator. |
+| `registerSupervisor(Supervisor, adminId)` | Administrator | Registers a Supervisor. |
+| `registerAdministrator(Administrator, requesterAdminId)` | Administrator | Registers another Administrator. |
+| `blockUser(userId, adminId)` | Administrator | Blocks a user (not themselves). |
+| `activateUser(userId, adminId)` | Administrator | Reactivates a blocked user. |
+| `findUserById(id)` | — | Retrieves a user by identifier. |
+| `findUserByEmail(email)` | — | Retrieves a user by email. |
+| `listAllUsers(adminId)` | Administrator | Lists every user. |
 
 ---
 
 ## WarehouseManagementUseCase
 
-Manages the physical storage locations of the platform.
-
-| Method | Description |
-| :--- | :--- |
-| `registerMarketplaceWarehouse(Warehouse, adminId)` | Administrator registers a Marketplace-owned warehouse. |
-| `registerSellerWarehouse(Warehouse, sellerId)` | Seller registers a warehouse under their ownership. |
-| `findWarehouseById(id)` | Retrieves a warehouse by identifier. |
-| `listMarketplaceWarehouses()` | Lists all warehouses owned by the Marketplace. |
-| `listWarehousesBySeller(sellerId)` | Lists all warehouses of a given Seller. |
-| `listAllWarehouses()` | Lists every warehouse. |
+| Method | Allowed role | Description |
+| :--- | :--- | :--- |
+| `registerMarketplaceWarehouse(Warehouse, adminId)` | Administrator | Registers a Marketplace-owned warehouse. |
+| `registerSellerWarehouse(Warehouse, sellerId, adminId)` | Administrator | Registers an additional warehouse for a Seller. |
+| `findWarehouseById(id)` | — | Retrieves a warehouse. |
+| `listMarketplaceWarehouses()` | — | Lists Marketplace warehouses. |
+| `listWarehousesBySeller(sellerId)` | — | Lists the warehouses of a Seller. |
+| `listAllWarehouses()` | — | Lists every warehouse. |
 
 ---
 
 ## ProductCatalogUseCase
 
-Manages the product catalog and its lifecycle.
-
-| Method | Description |
-| :--- | :--- |
-| `createProduct(Product, sellerId)` | Seller registers a new product. |
-| `updateProduct(productId, updatedProduct, sellerId)` | Seller updates one of their products. |
-| `publishProduct(productId, sellerId)` | Seller marks the product as PUBLISHED. |
-| `suspendProduct(productId, sellerId)` | Seller marks the product as SUSPENDED. |
-| `discontinueProduct(productId, sellerId)` | Seller permanently discontinues the product. |
-| `findProductById(id)` | Retrieves a product by identifier. |
-| `listPublishedProducts()` | Lists every product currently on sale. |
-| `listProductsBySeller(sellerId)` | Lists all products of a Seller. |
+| Method | Allowed role | Description |
+| :--- | :--- | :--- |
+| `createProduct(Product, sellerId)` | Seller | Registers a product in `SUSPENDED` status. |
+| `updateProduct(productId, updatedProduct, sellerId)` | Owner Seller | Updates name, description, price, and variants. |
+| `publishProduct(productId, sellerId)` | Owner Seller | Publishes the product (physical products need available stock). |
+| `suspendProduct(productId, sellerId)` | Owner Seller | Temporarily hides the product. |
+| `discontinueProduct(productId, sellerId)` | Owner Seller | Permanently discontinues the product. |
+| `findProductById(id)` | — | Retrieves a product. |
+| `listPublishedProducts()` | — | Public catalog. |
+| `listProductsBySeller(sellerId)` | — | Products of a Seller. |
 
 ---
 
 ## InventoryManagementUseCase
 
-Manages distributed inventory operations.
+Reservations, sale exits, and returns are **not** exposed here: they are triggered automatically by the order, shipment, and return flows so that stock can never be manipulated outside a business process.
 
-| Method | Description |
-| :--- | :--- |
-| `registerInventory(productId, warehouseId, initialQuantity)` | Creates the inventory record for a product in a warehouse. |
-| `addStock(productId, warehouseId, quantity)` | Movement type: ENTRY. |
-| `reserveStock(productId, warehouseId, quantity)` | Movement type: RESERVATION. |
-| `releaseReservedStock(productId, warehouseId, quantity)` | Releases a previous reservation without consuming stock. |
-| `consumeReservedStock(productId, warehouseId, quantity)` | Movement type: SALE_EXIT. Deducts previously reserved stock. |
-| `adjustStock(productId, warehouseId, newQuantity)` | Movement type: ADJUSTMENT. |
-| `returnStock(productId, warehouseId, quantity)` | Movement type: RETURN. |
-| `checkAvailability(productId, warehouseId)` | Returns the currently available quantity (quantity − reserved). |
-| `listInventoryByProduct(productId)` | Lists all inventory records for a product across warehouses. |
-| `listInventoryByWarehouse(warehouseId)` | Lists all inventory records inside a warehouse. |
+| Method | Allowed role | Movement |
+| :--- | :--- | :--- |
+| `registerInventory(productId, warehouseId, initialQuantity, requesterId)` | Owner Seller / Logistics Operator | ENTRY |
+| `addStock(productId, warehouseId, quantity, requesterId)` | Owner Seller / Logistics Operator | ENTRY |
+| `adjustStock(productId, warehouseId, newQuantity, requesterId)` | Owner Seller / Logistics Operator | ADJUSTMENT |
+| `markAsDamaged(productId, warehouseId, requesterId)` | Owner Seller / Logistics Operator | — |
+| `markAsAvailable(productId, warehouseId, requesterId)` | Owner Seller / Logistics Operator | — |
+| `checkAvailability(productId, warehouseId)` | — | Available units (0 if damaged). |
+| `listInventoryByProduct(productId)` | — | Records of a product across warehouses. |
+| `listInventoryByWarehouse(warehouseId)` | — | Records inside a warehouse. |
+| `listMovements(productId, warehouseId)` | — | Movement history of a record. |
 
 ---
 
 ## ShoppingCartUseCase
 
-Manages the temporary product selection before checkout.
+All operations require an active Buyer with `commercialStatus = ENABLED`.
 
 | Method | Description |
 | :--- | :--- |
-| `createCart(buyerId)` | Creates an empty cart for the Buyer. |
-| `addProductToCart(buyerId, productId, quantity)` | Adds units of a product to the Buyer's cart. |
-| `removeProductFromCart(buyerId, productId)` | Removes a product from the cart. |
-| `updateProductQuantity(buyerId, productId, newQuantity)` | Changes the quantity of an existing item. |
-| `getCartByBuyer(buyerId)` | Retrieves the Buyer's current cart. |
+| `createCart(buyerId)` | Creates an empty cart. |
+| `addProductToCart(buyerId, productId, quantity)` | Adds units of a published product. |
+| `removeProductFromCart(buyerId, productId)` | Removes a product. |
+| `updateProductQuantity(buyerId, productId, newQuantity)` | Changes the quantity of an item. |
+| `getCartByBuyer(buyerId)` | Retrieves the cart. |
 | `clearCart(buyerId)` | Empties the cart. |
 
 ---
 
 ## OrderProcessingUseCase
 
-Manages the complete order lifecycle and invoice generation.
-
-| Method | Description |
-| :--- | :--- |
-| `placeOrder(buyerId)` | Converts the Buyer's cart into a `PENDING_PAYMENT` order. |
-| `payOrder(orderId)` | Transitions the order to `PAID` and generates the Invoice. |
-| `dispatchOrder(orderId, operatorId)` | Logistics Operator moves the order to `DISPATCHED`. |
-| `deliverOrder(orderId, operatorId)` | Logistics Operator moves the order to `DELIVERED`. |
-| `cancelOrder(orderId, buyerId)` | Buyer cancels the order (only if not dispatched). |
-| `findOrderById(id)` | Retrieves an order by identifier. |
-| `listOrdersByBuyer(buyerId)` | Lists all orders of a Buyer. |
-| `getInvoiceByOrder(orderId)` | Retrieves the invoice associated with an order. |
+| Method | Allowed role | Description |
+| :--- | :--- | :--- |
+| `placeOrder(buyerId, deliveryAddress)` | Buyer | Converts the cart into a `PENDING_PAYMENT` order and reserves stock. Uses the main address when none is given. |
+| `payOrder(orderId, buyerId)` | Owner Buyer | Moves the order to `PAID` and generates the Invoice. Digital-only orders become `DELIVERED`. |
+| `cancelOrder(orderId, buyerId)` | Owner Buyer | Cancels a `PENDING_PAYMENT` order and releases the reserved stock. |
+| `findOrderById(id)` | — | Retrieves an order. |
+| `listOrdersByBuyer(buyerId)` | — | Orders of a Buyer. |
+| `getInvoiceByOrder(orderId)` | — | Invoice of an order. |
 
 ---
 
 ## ShipmentManagementUseCase
 
-Manages the logistics dispatch of paid orders.
-
-| Method | Description |
-| :--- | :--- |
-| `createShipment(orderId, operatorId)` | Creates a shipment for an order in `PAID` status. |
-| `findShipmentByOrder(orderId)` | Retrieves the shipment of an order. |
-| `findShipmentByTrackingId(trackingId)` | Retrieves a shipment by its tracking id. |
-| `listShipmentsByOperator(operatorId)` | Lists all shipments handled by a Logistics Operator. |
+| Method | Allowed role | Description |
+| :--- | :--- | :--- |
+| `createShipment(orderId, operatorId)` | Logistics Operator | Creates the shipment of a `PAID` physical order. |
+| `dispatchShipment(trackingId, operatorId)` | Assigned Operator | Order → `DISPATCHED`; consumes reserved stock (SALE_EXIT). |
+| `confirmDelivery(trackingId, operatorId)` | Assigned Operator | Order → `DELIVERED`. |
+| `findShipmentByOrder(orderId)` | — | Shipment of an order. |
+| `findShipmentByTrackingId(trackingId)` | — | Shipment by tracking id. |
+| `listShipmentsByOperator(operatorId)` | — | Shipments of an operator. |
 
 ---
 
 ## ReturnRefundUseCase
 
-Manages the post-sale reverse flow.
+| Method | Allowed role | Description |
+| :--- | :--- | :--- |
+| `requestReturn(orderId, buyerId, reason)` | Owner Buyer | Requests the return of a `DELIVERED` order. |
+| `generateRefund(returnId, adminId)` | Administrator | Approves the return, restocks physical items (RETURN), and issues the refund. |
+| `rejectReturn(returnId, adminId)` | Administrator | Rejects the return. |
+| `findReturnById(returnId)` | — | Retrieves a return. |
+| `listPendingReturns(adminId)` | Administrator | Returns awaiting resolution. |
+| `findRefundById(refundId)` | — | Retrieves a refund. |
+| `findRefundByReturn(returnId)` | — | Refund of a return. |
 
-| Method | Description |
-| :--- | :--- |
-| `requestReturn(orderId, buyerId)` | Buyer requests the return of a `DELIVERED` order. |
-| `generateRefund(returnId, adminId)` | Administrator generates the refund associated with a return. |
-| `findReturnById(returnId)` | Retrieves a return process by identifier. |
-| `findRefundById(refundId)` | Retrieves a refund by identifier. |
-| `findRefundByReturn(returnId)` | Retrieves the refund associated with a return. |
+---
+
+## MarketplaceReportUseCase
+
+| Method | Allowed role | Description |
+| :--- | :--- | :--- |
+| `generateOperationalReport(requesterId)` | Supervisor / Administrator | Consolidated figures of users, products, orders, invoicing, refunds, and inventory. |
+| `listOrdersByStatus(status, requesterId)` | Supervisor / Administrator | Operational follow-up of orders in a given state. |
 
 ---
 
 ## Design Rules
 
 1. **Interface-driven design:** Every service exposes its capabilities through an Input Port.
-2. **No infrastructure references:** Input Ports work with domain models only; no framework classes, DTOs, or transport annotations leak in.
+2. **No infrastructure references:** Input Ports work with domain models only.
 3. **Named use cases:** Method names describe the business action, not a CRUD verb.
-4. **Explicit authorization arguments:** Whenever a use case requires role authorization, the requester's id is a required parameter.
+4. **Explicit requester:** Whenever a use case requires role authorization, the requester's id is a parameter. Read operations marked "—" will be restricted by authentication at the API layer.

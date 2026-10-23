@@ -4,12 +4,16 @@ import application.domain.models.Shipment;
 import java.util.List;
 
 /**
- * Manages the logistics process of paid orders.
+ * Manages the logistics process of paid orders that contain physical products.
  * Covers business objective OBJ-10.
  */
 public interface ShipmentManagementUseCase {
 
     Shipment createShipment(String orderId, String logisticsOperatorId);
+
+    Shipment dispatchShipment(String trackingId, String logisticsOperatorId);
+
+    Shipment confirmDelivery(String trackingId, String logisticsOperatorId);
 
     Shipment findShipmentByOrder(String orderId);
 

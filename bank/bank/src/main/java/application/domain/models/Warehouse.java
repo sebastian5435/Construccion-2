@@ -1,5 +1,6 @@
 package application.domain.models;
 
+import application.domain.exceptions.InvalidOperationException;
 import application.domain.valueobjects.WarehouseType;
 
 public class Warehouse {
@@ -25,4 +26,13 @@ public class Warehouse {
 
     public Seller getSeller() { return seller; }
     public void setSeller(Seller seller) { this.seller = seller; }
+
+    public void validateRequiredData() {
+        if (name == null || name.isBlank()) {
+            throw new InvalidOperationException("Warehouse name is required.");
+        }
+        if (address == null || address.isBlank()) {
+            throw new InvalidOperationException("Warehouse address is required.");
+        }
+    }
 }

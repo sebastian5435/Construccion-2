@@ -2,8 +2,7 @@ package application.domain.services.order;
 
 import application.domain.exceptions.EntityNotFoundException;
 import application.domain.exceptions.InvalidOperationException;
-import application.domain.exceptions.InvalidOrderStateTransitionException;
-import application.domain.exceptions.OrderAlreadyFinalizedException;
+import application.domain.exceptions.ProductNotAvailableException;
 import application.domain.exceptions.UnauthorizedRoleException;
 import application.domain.models.Buyer;
 import application.domain.models.Invoice;
@@ -15,10 +14,10 @@ import application.domain.ports.input.OrderProcessingUseCase;
 import application.domain.ports.output.InvoiceRepositoryPort;
 import application.domain.ports.output.OrderRepositoryPort;
 import application.domain.ports.output.ShoppingCartRepositoryPort;
-import application.domain.ports.output.UserRepositoryPort;
+import application.domain.services.access.AccessGuard;
+import application.domain.services.inventory.StockMovementService;
 import application.domain.valueobjects.OrderStatus;
 import application.domain.valueobjects.SystemRole;
-import application.domain.valueobjects.UserStatus;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,85 +30,83 @@ public class OrderProcessingService implements OrderProcessingUseCase {
     private final OrderRepositoryPort orderRepository;
     private final InvoiceRepositoryPort invoiceRepository;
     private final ShoppingCartRepositoryPort cartRepository;
-    private final UserRepositoryPort userRepository;
+    private final StockMovementService stockMovementService;
+    private final AccessGuard accessGuard;
 
     public OrderProcessingService(OrderRepositoryPort orderRepository,
                                   InvoiceRepositoryPort invoiceRepository,
                                   ShoppingCartRepositoryPort cartRepository,
-                                  UserRepositoryPort userRepository) {
+                                  StockMovementService stockMovementService,
+                                  AccessGuard accessGuard) {
         this.orderRepository = orderRepository;
         this.invoiceRepository = invoiceRepository;
         this.cartRepository = cartRepository;
-        this.userRepository = userRepository;
+        this.stockMovementService = stockMovementService;
+        this.accessGuard = accessGuard;
     }
 
     @Override
-    public Order placeOrder(String buyerId) {
-        Buyer buyer = requireActiveBuyer(buyerId);
+    public Order placeOrder(String buyerId, String deliveryAddress) {
+        Buyer buyer = (Buyer) accessGuard.requireActiveUser(buyerId, "placeOrder", SystemRole.BUYER);
+        if (!buyer.canPurchase()) {
+            throw new InvalidOperationException(
+                    "Buyer " + buyerId + " has commercial restrictions applied.");
+        }
         ShoppingCart cart = cartRepository.findByBuyerId(buyerId)
                 .orElseThrow(() -> new EntityNotFoundException("ShoppingCart for buyer", buyerId));
-
         if (cart.isEmpty()) {
             throw new InvalidOperationException(
                     "Cannot place an order from an empty shopping cart.");
+        }
+        String address = deliveryAddress == null || deliveryAddress.isBlank()
+                ? buyer.getMainAddress()
+                : deliveryAddress;
+        if (!buyer.hasAddress(address)) {
+            throw new InvalidOperationException(
+                    "The delivery address must be one of the buyer's registered addresses.");
         }
 
         Order order = new Order();
         order.setId(UUID.randomUUID().toString());
         order.setBuyer(buyer);
-        order.setItems(new ArrayList<>(cart.getItems()));
-        order.setStatus(OrderStatus.PENDING_PAYMENT);
+        order.setItems(copyItems(cart));
+        order.setStatus(OrderStatus.CART);
+        order.setDeliveryAddress(address);
         order.setTotalAmount(order.calculateTotal());
         LocalDateTime now = LocalDateTime.now();
         order.setCreatedAt(now);
         order.setUpdatedAt(now);
 
+        stockMovementService.reserveForOrder(order, buyer);
+        order.markAsPendingPayment();
         Order savedOrder = orderRepository.save(order);
+
         cart.getItems().clear();
         cartRepository.save(cart);
         return savedOrder;
     }
 
     @Override
-    public Order payOrder(String orderId) {
+    public Order payOrder(String orderId, String buyerId) {
+        accessGuard.requireActiveUser(buyerId, "payOrder", SystemRole.BUYER);
         Order order = findOrderById(orderId);
-        transitionTo(order, OrderStatus.PAID);
+        requireOwner(order, buyerId, "payOrder");
+        order.markAsPaid();
+        if (!order.requiresShipping()) {
+            order.markAsDelivered();
+        }
         Order savedOrder = orderRepository.save(order);
         generateInvoice(savedOrder);
         return savedOrder;
     }
 
     @Override
-    public Order dispatchOrder(String orderId, String logisticsOperatorId) {
-        requireRole(logisticsOperatorId, SystemRole.LOGISTICS_OPERATOR, "dispatchOrder");
-        Order order = findOrderById(orderId);
-        transitionTo(order, OrderStatus.DISPATCHED);
-        return orderRepository.save(order);
-    }
-
-    @Override
-    public Order deliverOrder(String orderId, String logisticsOperatorId) {
-        requireRole(logisticsOperatorId, SystemRole.LOGISTICS_OPERATOR, "deliverOrder");
-        Order order = findOrderById(orderId);
-        transitionTo(order, OrderStatus.DELIVERED);
-        return orderRepository.save(order);
-    }
-
-    @Override
     public Order cancelOrder(String orderId, String buyerId) {
+        User buyer = accessGuard.requireActiveUser(buyerId, "cancelOrder", SystemRole.BUYER);
         Order order = findOrderById(orderId);
-        if (!order.getBuyer().getIdentifier().equals(buyerId)) {
-            throw new UnauthorizedRoleException("cancelOrder", "the buyer who placed the order");
-        }
-        if (order.isFinalized()) {
-            throw new OrderAlreadyFinalizedException(orderId);
-        }
-        if (order.getStatus() == OrderStatus.DISPATCHED) {
-            throw new InvalidOperationException(
-                    "Order " + orderId + " has already been dispatched and cannot be cancelled.");
-        }
-        order.setStatus(OrderStatus.CART);
-        order.setUpdatedAt(LocalDateTime.now());
+        requireOwner(order, buyerId, "cancelOrder");
+        order.cancel();
+        stockMovementService.releaseForOrder(order, buyer);
         return orderRepository.save(order);
     }
 
@@ -130,31 +127,26 @@ public class OrderProcessingService implements OrderProcessingUseCase {
                 .orElseThrow(() -> new EntityNotFoundException("Invoice for order", orderId));
     }
 
-    private void transitionTo(Order order, OrderStatus target) {
-        if (order.isFinalized()) {
-            throw new OrderAlreadyFinalizedException(order.getId());
+    private List<OrderItem> copyItems(ShoppingCart cart) {
+        List<OrderItem> items = new ArrayList<>();
+        for (OrderItem cartItem : cart.getItems()) {
+            if (!cartItem.getProduct().isPublished()) {
+                throw new ProductNotAvailableException(cartItem.getProduct().getId(),
+                        "product status is " + cartItem.getProduct().getStatus());
+            }
+            OrderItem item = new OrderItem();
+            item.setProduct(cartItem.getProduct());
+            item.setQuantity(cartItem.getQuantity());
+            item.setUnitPrice(cartItem.getUnitPrice());
+            items.add(item);
         }
-        if (!isValidTransition(order.getStatus(), target)) {
-            throw new InvalidOrderStateTransitionException(order.getStatus(), target);
-        }
-        order.setStatus(target);
-        order.setUpdatedAt(LocalDateTime.now());
+        return items;
     }
 
-    private boolean isValidTransition(OrderStatus current, OrderStatus target) {
-        if (current == OrderStatus.CART) {
-            return target == OrderStatus.PENDING_PAYMENT;
+    private void requireOwner(Order order, String buyerId, String action) {
+        if (!order.isPlacedBy(buyerId)) {
+            throw new UnauthorizedRoleException(action, "the buyer who placed the order");
         }
-        if (current == OrderStatus.PENDING_PAYMENT) {
-            return target == OrderStatus.PAID;
-        }
-        if (current == OrderStatus.PAID) {
-            return target == OrderStatus.DISPATCHED;
-        }
-        if (current == OrderStatus.DISPATCHED) {
-            return target == OrderStatus.DELIVERED;
-        }
-        return false;
     }
 
     private Invoice generateInvoice(Order order) {
@@ -164,29 +156,5 @@ public class OrderProcessingService implements OrderProcessingUseCase {
         invoice.setTotalAmount(order.getTotalAmount());
         invoice.setIssueDate(LocalDateTime.now());
         return invoiceRepository.save(invoice);
-    }
-
-    private Buyer requireActiveBuyer(String buyerId) {
-        User user = userRepository.findById(buyerId)
-                .orElseThrow(() -> new EntityNotFoundException("User", buyerId));
-        if (user.getRole() != SystemRole.BUYER) {
-            throw new UnauthorizedRoleException("placeOrder", SystemRole.BUYER.name());
-        }
-        if (user.getStatus() != UserStatus.ACTIVE) {
-            throw new InvalidOperationException("Buyer " + buyerId + " is not active.");
-        }
-        return (Buyer) user;
-    }
-
-    private User requireRole(String userId, SystemRole requiredRole, String action) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new EntityNotFoundException("User", userId));
-        if (user.getRole() != requiredRole) {
-            throw new UnauthorizedRoleException(action, requiredRole.name());
-        }
-        if (user.getStatus() != UserStatus.ACTIVE) {
-            throw new InvalidOperationException("User " + userId + " is not active.");
-        }
-        return user;
     }
 }

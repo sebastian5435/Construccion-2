@@ -4,6 +4,7 @@ public class OrderItem {
     private Product product;
     private int quantity;
     private double unitPrice;
+    private Warehouse sourceWarehouse;
 
     public OrderItem() {}
 
@@ -16,7 +17,14 @@ public class OrderItem {
     public double getUnitPrice() { return unitPrice; }
     public void setUnitPrice(double unitPrice) { this.unitPrice = unitPrice; }
 
+    public Warehouse getSourceWarehouse() { return sourceWarehouse; }
+    public void setSourceWarehouse(Warehouse sourceWarehouse) { this.sourceWarehouse = sourceWarehouse; }
+
     public double getSubtotal() {
         return unitPrice * quantity;
+    }
+
+    public boolean requiresShipping() {
+        return product != null && product.isPhysical();
     }
 }

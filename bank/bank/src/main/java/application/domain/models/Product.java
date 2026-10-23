@@ -1,7 +1,8 @@
 package application.domain.models;
 
-import application.domain.valueobjects.ProductType;
+import application.domain.exceptions.InvalidOperationException;
 import application.domain.valueobjects.ProductStatus;
+import application.domain.valueobjects.ProductType;
 import java.util.List;
 
 public abstract class Product {
@@ -10,7 +11,6 @@ public abstract class Product {
     private String description;
     private double price;
     private Seller seller;
-    private ProductType productType;
     private List<String> variants;
     private ProductStatus status;
 
@@ -31,12 +31,43 @@ public abstract class Product {
     public Seller getSeller() { return seller; }
     public void setSeller(Seller seller) { this.seller = seller; }
 
-    public ProductType getProductType() { return productType; }
-    public void setProductType(ProductType productType) { this.productType = productType; }
-
     public List<String> getVariants() { return variants; }
     public void setVariants(List<String> variants) { this.variants = variants; }
 
     public ProductStatus getStatus() { return status; }
     public void setStatus(ProductStatus status) { this.status = status; }
+
+    public abstract ProductType getProductType();
+
+    public boolean isPhysical() {
+        return getProductType() == ProductType.PHYSICAL;
+    }
+
+    public boolean isPublished() {
+        return status == ProductStatus.PUBLISHED;
+    }
+
+    public boolean isOwnedBy(String sellerId) {
+        return seller != null && seller.getIdentifier().equals(sellerId);
+    }
+
+    public void publish() {
+        requireNotDiscontinued("republished");
+        this.status = ProductStatus.PUBLISHED;
+    }
+
+    public void suspend() {
+        requireNotDiscontinued("suspended");
+        this.status = ProductStatus.SUSPENDED;
+    }
+
+    public void discontinue() {
+        this.status = ProductStatus.DISCONTINUED;
+    }
+
+    public void requireNotDiscontinued(String action) {
+        if (status == ProductStatus.DISCONTINUED) {
+            throw new InvalidOperationException("Discontinued products cannot be " + action + ".");
+        }
+    }
 }

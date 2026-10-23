@@ -5,21 +5,20 @@ import application.domain.models.Order;
 import java.util.List;
 
 /**
- * Manages the complete order lifecycle and automatic invoice generation.
+ * Manages the commercial side of the order lifecycle and automatic invoice generation.
+ * Dispatch and delivery of physical orders are handled by ShipmentManagementUseCase.
  * Covers business objectives OBJ-08 and OBJ-09.
  *
  * Lifecycle: CART -> PENDING_PAYMENT -> PAID -> DISPATCHED -> DELIVERED
- * A finalized (DELIVERED) order cannot be modified.
+ *            PENDING_PAYMENT -> CANCELLED
+ *            PAID -> DELIVERED (digital-only orders)
+ * A finalized (DELIVERED or CANCELLED) order cannot be modified.
  */
 public interface OrderProcessingUseCase {
 
-    Order placeOrder(String buyerId);
+    Order placeOrder(String buyerId, String deliveryAddress);
 
-    Order payOrder(String orderId);
-
-    Order dispatchOrder(String orderId, String logisticsOperatorId);
-
-    Order deliverOrder(String orderId, String logisticsOperatorId);
+    Order payOrder(String orderId, String buyerId);
 
     Order cancelOrder(String orderId, String buyerId);
 

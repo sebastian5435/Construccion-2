@@ -3,15 +3,15 @@ package application.domain.services.product;
 import application.domain.exceptions.EntityNotFoundException;
 import application.domain.exceptions.InvalidOperationException;
 import application.domain.exceptions.UnauthorizedRoleException;
+import application.domain.models.Inventory;
 import application.domain.models.Product;
 import application.domain.models.Seller;
-import application.domain.models.User;
 import application.domain.ports.input.ProductCatalogUseCase;
+import application.domain.ports.output.InventoryRepositoryPort;
 import application.domain.ports.output.ProductRepositoryPort;
-import application.domain.ports.output.UserRepositoryPort;
+import application.domain.services.access.AccessGuard;
 import application.domain.valueobjects.ProductStatus;
 import application.domain.valueobjects.SystemRole;
-import application.domain.valueobjects.UserStatus;
 import java.util.List;
 import org.springframework.stereotype.Service;
 
@@ -19,12 +19,15 @@ import org.springframework.stereotype.Service;
 public class ProductService implements ProductCatalogUseCase {
 
     private final ProductRepositoryPort productRepository;
-    private final UserRepositoryPort userRepository;
+    private final InventoryRepositoryPort inventoryRepository;
+    private final AccessGuard accessGuard;
 
     public ProductService(ProductRepositoryPort productRepository,
-                          UserRepositoryPort userRepository) {
+                          InventoryRepositoryPort inventoryRepository,
+                          AccessGuard accessGuard) {
         this.productRepository = productRepository;
-        this.userRepository = userRepository;
+        this.inventoryRepository = inventoryRepository;
+        this.accessGuard = accessGuard;
     }
 
     @Override
@@ -32,9 +35,7 @@ public class ProductService implements ProductCatalogUseCase {
         Seller seller = requireSeller(sellerId, "createProduct");
         validateProductAttributes(product);
         product.setSeller(seller);
-        if (product.getStatus() == null) {
-            product.setStatus(ProductStatus.PUBLISHED);
-        }
+        product.setStatus(ProductStatus.SUSPENDED);
         return productRepository.save(product);
     }
 
@@ -43,16 +44,15 @@ public class ProductService implements ProductCatalogUseCase {
         requireSeller(sellerId, "updateProduct");
         Product existing = findProductById(productId);
         requireOwnership(existing, sellerId);
-        if (existing.getStatus() == ProductStatus.DISCONTINUED) {
-            throw new InvalidOperationException(
-                    "Discontinued products cannot be updated.");
-        }
+        existing.requireNotDiscontinued("updated");
         validateProductAttributes(updatedProduct);
+        if (updatedProduct.getProductType() != existing.getProductType()) {
+            throw new InvalidOperationException("The product type cannot be changed once registered.");
+        }
         existing.setName(updatedProduct.getName());
         existing.setDescription(updatedProduct.getDescription());
         existing.setPrice(updatedProduct.getPrice());
         existing.setVariants(updatedProduct.getVariants());
-        existing.setProductType(updatedProduct.getProductType());
         return productRepository.save(existing);
     }
 
@@ -61,11 +61,11 @@ public class ProductService implements ProductCatalogUseCase {
         requireSeller(sellerId, "publishProduct");
         Product product = findProductById(productId);
         requireOwnership(product, sellerId);
-        if (product.getStatus() == ProductStatus.DISCONTINUED) {
+        if (product.isPhysical() && !hasAvailableStock(productId)) {
             throw new InvalidOperationException(
-                    "Discontinued products cannot be republished.");
+                    "Physical products need available inventory in at least one warehouse before being published.");
         }
-        product.setStatus(ProductStatus.PUBLISHED);
+        product.publish();
         return productRepository.save(product);
     }
 
@@ -74,11 +74,7 @@ public class ProductService implements ProductCatalogUseCase {
         requireSeller(sellerId, "suspendProduct");
         Product product = findProductById(productId);
         requireOwnership(product, sellerId);
-        if (product.getStatus() == ProductStatus.DISCONTINUED) {
-            throw new InvalidOperationException(
-                    "Discontinued products cannot be suspended.");
-        }
-        product.setStatus(ProductStatus.SUSPENDED);
+        product.suspend();
         return productRepository.save(product);
     }
 
@@ -87,7 +83,7 @@ public class ProductService implements ProductCatalogUseCase {
         requireSeller(sellerId, "discontinueProduct");
         Product product = findProductById(productId);
         requireOwnership(product, sellerId);
-        product.setStatus(ProductStatus.DISCONTINUED);
+        product.discontinue();
         return productRepository.save(product);
     }
 
@@ -107,6 +103,11 @@ public class ProductService implements ProductCatalogUseCase {
         return productRepository.findBySellerId(sellerId);
     }
 
+    private boolean hasAvailableStock(String productId) {
+        return inventoryRepository.findByProduct(productId).stream()
+                .anyMatch(inventory -> !inventory.isDamaged() && inventory.getAvailableQuantity() > 0);
+    }
+
     private void validateProductAttributes(Product product) {
         if (product.getName() == null || product.getName().isBlank()) {
             throw new InvalidOperationException("Product name is required.");
@@ -114,14 +115,10 @@ public class ProductService implements ProductCatalogUseCase {
         if (product.getPrice() < 0) {
             throw new InvalidOperationException("Product price cannot be negative.");
         }
-        if (product.getProductType() == null) {
-            throw new InvalidOperationException("Product type is required.");
-        }
     }
 
     private void requireOwnership(Product product, String sellerId) {
-        if (product.getSeller() == null
-                || !sellerId.equals(product.getSeller().getIdentifier())) {
+        if (!product.isOwnedBy(sellerId)) {
             throw new UnauthorizedRoleException(
                     "modify product " + product.getId(),
                     "the seller who created it");
@@ -129,14 +126,6 @@ public class ProductService implements ProductCatalogUseCase {
     }
 
     private Seller requireSeller(String userId, String action) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new EntityNotFoundException("User", userId));
-        if (user.getRole() != SystemRole.SELLER) {
-            throw new UnauthorizedRoleException(action, SystemRole.SELLER.name());
-        }
-        if (user.getStatus() != UserStatus.ACTIVE) {
-            throw new InvalidOperationException("Seller " + userId + " is not active.");
-        }
-        return (Seller) user;
+        return (Seller) accessGuard.requireActiveUser(userId, action, SystemRole.SELLER);
     }
 }
